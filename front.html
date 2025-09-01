@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>政策動画投票</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+    body {
+      background: linear-gradient(135deg, #2a2a72, #009ffd);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    h1 {
+      margin: 20px 0;
+      font-size: 1.5em;
+      text-align: center;
+    }
+    .video-container {
+      position: relative;
+      width: 90%;
+      max-width: 400px;
+      height: 70vh;
+      overflow: hidden;
+      border-radius: 10px;
+      background-color: #222;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
+    }
+    .video-card {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background-color: #000;
+      border-radius: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: transform 0.3s ease;
+    }
+    .video-card video {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 10px;
+    }
+    button {
+      margin: 10px;
+      padding: 10px 20px;
+      border: none;
+      background-color: #007BFF;
+      color: #fff;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 1em;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    }
+    button:hover {
+      background-color: #0056b3;
+      transform: translateY(-2px);
+    }
+    .hidden {
+      display: none;
+    }
+    .swipe-instructions {
+      margin-bottom: 10px;
+      font-size: 1em;
+      text-align: center;
+    }
+    .arrows {
+      position: absolute;
+      width: 100%;
+      top: 50%;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+    .arrow {
+      font-size: 2em;
+      color: #fff;
+      margin: 0 20px;
+      opacity: 0.7;
+    }
+    .hidden {
+      display: none; /* 要素を完全に非表示にする */
+    }
+    .swipe-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 4em; /* フォントサイズをさらに大きく */
+  font-weight: bold; /* 太字に変更 */
+  color: rgba(255, 255, 255, 0.9); /* 白色で少し透明度を下げる */
+  pointer-events: none;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); /* テキストに影を追加 */
+  opacity: 0; /* 初期状態は非表示 */
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-size: 1.2em;
+    }
+
+  #resultsContainer {
+            width: 600px;
+            height: 400px;
+            border: 1px solid #ccc;
+            margin-top: 20px;
+        }
+  </style>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script> <!-- Plotlyライブラリ -->
+</head>
+<body>
+  <h1 id="mainTitle">政策動画投票</h1>
+  <p class="swipe-instructions">右にスワイプすると「賛成」、左にスワイプすると「反対」です。</p>
+  <div class="video-container" id="videoContainer">
+    <div class="video-card" id="videoCard"></div>
+    <div class="swipe-label" id="swipeLabel"></div>
+  </div>
+  <div id="voteContainer" style="display:none;">
+    <h2>最適な候補者を選んでください</h2>
+    <div class="vote-buttons">
+      <button onclick="submitVote('A')">候補者 A に投票</button>
+      <button onclick="submitVote('B')">候補者 B に投票</button>
+      <button onclick="submitVote('C')">候補者 C に投票</button>
+    </div>
+    <div class="reset-button">
+      <button onclick="resetToStart()">最初に戻る</button>
+    </div>
+  </div>
+  
+  <button id="showResultsButton" class="hidden" onclick="showResults()">結果を表示する</button>
+  <h2 id="resultsMessage" class="hidden">結果は以下の通りです:</h2>
+  <div id="resultsContainer" class="hidden"></div>
+
+  <script>
+    const videos = [
+      { candidate: 'A', policy: 'Policy 1', videoUrl: '/movies/movie_cpi_1.MP4' },
+      { candidate: 'B', policy: 'Policy 1', videoUrl: '/movies/movie_cpi_2.MP4' },
+      { candidate: 'C', policy: 'Policy 1', videoUrl: '/movies/movie_cpi_3.MP4' },
+      { candidate: 'A', policy: 'Policy 2', videoUrl: '/movies/movie_cpi_4.MP4' },
+      { candidate: 'B', policy: 'Policy 2', videoUrl: '/movies/movie_cpi_5.MP4' },
+      { candidate: 'C', policy: 'Policy 2', videoUrl: '/movies/movie_cpi_6.MP4' },
+      { candidate: 'A', policy: 'Policy 3', videoUrl: '/movies/movie_cpi_7.MP4' },
+      { candidate: 'B', policy: 'Policy 3', videoUrl: '/movies/movie_cpi_8.MP4' },
+      { candidate: 'C', policy: 'Policy 3', videoUrl: '/movies/movie_cpi_9.MP4' }
+    ];
+
+    let currentIndex = 0;
+    const scores = { A: 0, B: 0, C: 0 }; // 候補者ごとのスコア
+
+    const videoContainer = document.getElementById('videoContainer');
+    const videoCard = document.getElementById('videoCard');
+    const voteContainer = document.getElementById('voteContainer');
+    const mainTitle = document.getElementById('mainTitle');
+    const showResultsButton = document.getElementById('showResultsButton');
+    const resultsMessage = document.getElementById('resultsMessage');
+    const resultsContainer = document.getElementById('resultsContainer');
+
+    let startX = 0;
+    let isSwiping = false;
+
+    function loadVideo(index) {
+      if (index >= videos.length) {
+        videoContainer.style.display = 'none';
+        voteContainer.style.display = 'block';
+        updateBestCandidateInTitle(); // 最適な候補者をタイトルに表示
+        return;
+      }
+      const { policy, candidate, videoUrl } = videos[index];
+      mainTitle.innerText = `政策: ${policy}, 候補者: ${candidate}`;
+      videoCard.innerHTML = `<video src="${videoUrl}" controls autoplay></video>`;
+    }
+    function resetToStart() {
+      // スコアをリセット
+      scores.A = 0;
+      scores.B = 0;
+      scores.C = 0;
+
+      // インデックスをリセット
+      currentIndex = 0;
+
+      // 表示要素をリセット
+      videoContainer.style.display = 'block';
+      voteContainer.style.display = 'none';
+      showResultsButton.classList.add('hidden');
+      resultsMessage.classList.add('hidden');
+      resultsContainer.classList.add('hidden');
+
+      // 最初の動画を読み込む
+      loadVideo(currentIndex);
+    }
+
+
+    function handleMouseDown(event) {
+      startX = event.clientX;
+      isSwiping = true;
+      videoCard.style.transition = 'none';
+    }
+
+    function handleMouseMove(event) {
+      if (!isSwiping) return;
+      const diffX = event.clientX - startX;
+
+      // スワイプ方向に応じてラベルのテキストとスタイルを更新
+      if (diffX > 0) {
+        swipeLabel.innerText = '賛成';
+        swipeLabel.style.color = 'lightgreen';
+      } else {
+        swipeLabel.innerText = '反対';
+        swipeLabel.style.color = 'red';
+      }
+
+      swipeLabel.style.opacity = Math.min(Math.abs(diffX) / 100, 1); // スワイプ量に応じた透明度
+      swipeLabel.style.transform = `translate(-50%, -50%) scale(${1 + Math.abs(diffX) / 200})`;
+
+      videoCard.style.transform = `translateX(${diffX}px)`;
+    }
+
+    function handleMouseUp(event) {
+      if (!isSwiping) return;
+      const diffX = event.clientX - startX;
+      // ラベルを非表示にする
+      swipeLabel.style.opacity = 0;
+
+      if (Math.abs(diffX) > 50) {
+        const { candidate } = videos[currentIndex];
+        if (diffX > 0) scores[candidate]++; // 右スワイプで賛成
+        else scores[candidate]--; // 左スワイプで反対
+        currentIndex++;
+        loadVideo(currentIndex);
+      }
+      videoCard.style.transition = 'transform 0.3s ease';
+      videoCard.style.transform = 'translateX(0)';
+      isSwiping = false;
+    }
+    //////////タッチ対応のための追加部分//////////
+    function handleTouchStart(event) {
+  startX = event.touches[0].clientX; // タッチ開始位置を取得
+  isSwiping = true; // スワイプ中フラグを設定
+  videoCard.style.transition = 'none'; // アニメーションを無効化
+}
+
+function handleTouchMove(event) {
+  if (!isSwiping) return;
+  const diffX = event.touches[0].clientX - startX; // スワイプ距離を計算
+
+  // スワイプ方向に応じてラベルのテキストとスタイルを更新
+  if (diffX > 0) {
+    swipeLabel.innerText = '賛成';
+    swipeLabel.style.color = 'lightgreen';
+  } else {
+    swipeLabel.innerText = '反対';
+    swipeLabel.style.color = 'red';
+  }
+
+  swipeLabel.style.opacity = Math.min(Math.abs(diffX) / 100, 1); // スワイプ量に応じた透明度
+  swipeLabel.style.transform = `translate(-50%, -50%) scale(${1 + Math.abs(diffX) / 200})`;
+
+  videoCard.style.transform = `translateX(${diffX}px)`; // カードの移動
+}
+
+function handleTouchEnd(event) {
+  if (!isSwiping) return;
+  const diffX = event.changedTouches[0].clientX - startX; // スワイプ距離を計算
+
+  // ラベルを非表示にする
+  swipeLabel.style.opacity = 0;
+
+  if (Math.abs(diffX) > 50) { // 一定以上の距離で判定
+    const { candidate } = videos[currentIndex];
+    if (diffX > 0) scores[candidate]++; // 右スワイプで賛成
+    else scores[candidate]--; // 左スワイプで反対
+    currentIndex++;
+    loadVideo(currentIndex);
+  }
+
+  videoCard.style.transition = 'transform 0.3s ease'; // アニメーションを有効化
+  videoCard.style.transform = 'translateX(0)'; // カードを元の位置に戻す
+  isSwiping = false; // スワイプフラグを解除
+}
+
+//////////タッチ対応のための追加部分//////////
+
+    function submitVote(candidate) {
+      fetch('/submit-vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidate }),
+      })
+      .then(response => {
+        if (response.ok) {
+          alert(`候補者 ${candidate} に投票しました！`);
+          voteContainer.style.display = 'none';
+          showResultsButton.classList.remove('hidden');
+        } else {
+          alert('投票に失敗しました。');
+        }
+      });
+    }
+
+    // 投票結果を取得してグラフを描画
+    function showResults() {
+    // Flask サーバーからデータを取得
+    fetch('/results')
+        .then(response => response.json())
+        .then(data => {
+            // データを整形
+            const candidates = Object.keys(data); // 候補者名
+            const votes = Object.values(data);   // 得票数
+            const totalVotes = votes.reduce((sum, vote) => sum + vote, 0); // 総投票数
+            const percentages = votes.map(vote => ((vote / totalVotes) * 100).toFixed(1) + '%'); // パーセンテージ計算
+
+            // 各候補者ごとに色を設定
+            const candidateColors = {
+                'A': 'skyblue',
+                'B': 'lightgreen',
+                'C': 'salmon'
+            };
+
+            // Plotly で棒グラフを作成
+            const trace = {
+                x: candidates,  // x 軸：候補者
+                y: votes,       // y 軸：得票数
+                type: 'bar',    // グラフタイプ：棒グラフ
+                text: percentages, // 棒グラフにパーセンテージを表示
+                textposition: 'inside', // テキストを棒の内側中央に表示
+                insidetextanchor: 'middle', // テキストを中央揃えにする
+                marker: {
+                    color: candidates.map(candidate => candidateColors[candidate]) // 候補者ごとに色分け
+                }
+            };
+
+            const layout = {
+                title: '投票結果',        // グラフタイトル
+                xaxis: { title: '候補者' }, // x 軸タイトル
+                yaxis: { title: '投票数' }, // y 軸タイトル
+                bargap: 0.1 // 棒同士の間隔を調整
+            };
+
+            resultsMessage.classList.remove('hidden');
+
+            // グラフを描画
+            Plotly.newPlot('resultsContainer', [trace], layout);
+
+            // グラフを表示
+            document.getElementById('resultsMessage').classList.remove('hidden');
+            document.getElementById('resultsContainer').classList.remove('hidden');
+        })
+        .catch(error => {
+            console.error('エラー:', error);
+            alert('結果を取得できませんでした！');
+        });
+   }
+
+
+
+
+   function updateBestCandidateInTitle() {
+      const maxScore = Math.max(...Object.values(scores)); // 最高スコアを取得
+      const bestCandidates = Object.keys(scores).filter(candidate => scores[candidate] === maxScore); // 最高スコアの候補者を抽出
+  
+      const bestCandidateText = bestCandidates.join('、'); // 複数の候補者名を「、」で連結
+      mainTitle.innerText = `あなたに最適な候補は: ${bestCandidateText}`;
+    }
+    
+
+    videoCard.addEventListener('mousedown', handleMouseDown);
+    videoCard.addEventListener('mousemove', handleMouseMove);
+    videoCard.addEventListener('mouseup', handleMouseUp);
+    videoCard.addEventListener('mouseleave', handleMouseUp);
+    //////////タッチ対応のための追加部分//////////
+    videoCard.addEventListener('touchstart', handleTouchStart);
+    videoCard.addEventListener('touchmove', handleTouchMove);
+    videoCard.addEventListener('touchend', handleTouchEnd);
+    //////////タッチ対応のための追加部分//////////
+
+    loadVideo(currentIndex);
+  </script>
+</body>
+</html>
